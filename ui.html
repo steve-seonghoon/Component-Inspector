@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    /* 기본 변수 정의 */
+    :root {
+      /* 색상 */
+      --color-text: var(--figma-color-text);
+      --color-text-secondary: var(--figma-color-text-secondary);
+      --color-bg: var(--figma-color-bg);
+      --color-bg-secondary: var(--figma-color-bg-secondary);
+      --color-border: var(--figma-color-border);
+      
+      /* 간격 */
+      --spacing-xs: 4px;
+      --spacing-sm: 8px;
+      --spacing-md: 12px;
+      --spacing-lg: 16px;
+      --spacing-xl: 24px;
+      
+      /* 폰트 크기 */
+      --font-xs: 11px;
+      --font-sm: 12px;
+      --font-md: 13px;
+      --font-lg: 14px;
+    }
+
+    /* 기본 스타일 */
+    body {
+      font-family: Inter, sans-serif;
+      margin: 0;
+      padding: var(--spacing-lg);
+      color: var(--color-text);
+      background: var(--color-bg);
+    }
+
+    /* 스캔 화면 */
+    .scan-options {
+      margin-bottom: var(--spacing-xl);
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-md);
+    }
+
+    .scan-button {
+      padding: var(--spacing-lg);
+      font-size: var(--font-md);
+      background: var(--color-bg-secondary);
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .scan-button:hover {
+      background: var(--color-bg);
+      border-color: var(--figma-color-border-brand);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    /* 검색 */
+    .search-container {
+      margin-bottom: var(--spacing-lg);
+    }
+
+    .search-input {
+      width: 100%;
+      padding: var(--spacing-sm) var(--spacing-md);
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-size: var(--font-md);
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--figma-color-bg-brand);
+    }
+
+    /* 그룹 헤더 */
+    .group-header {
+      margin-bottom: var(--spacing-md);
+      padding: 0 var(--spacing-sm);
+    }
+
+    .group-title {
+      font-weight: 600;
+      margin: 0 0 var(--spacing-xs) 0;
+      font-size: var(--font-lg);
+    }
+
+    .group-count {
+      font-size: var(--font-sm);
+      color: var(--color-text-secondary);
+    }
+
+    /* 리스트 */
+    .list-container {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-lg);
+    }
+
+    /* 리스트 아이템 */
+    .list-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-lg);
+      background: white;
+      padding: var(--spacing-lg);
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .list-item:hover {
+      background: var(--color-bg-secondary);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .preview-image {
+      width: 48px;
+      height: 48px;
+      border-radius: 4px;
+      object-fit: contain;
+      background: var(--color-bg-secondary);
+      flex-shrink: 0;
+    }
+
+    .item-info {
+      flex: 1;
+    }
+
+    .item-name {
+      font-weight: 600;
+      margin: 0 0 var(--spacing-xs) 0;
+      font-size: var(--font-md);
+    }
+
+    .item-meta {
+      font-size: var(--font-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .item-id {
+      font-size: var(--font-xs);
+      color: var(--color-text-secondary);
+      font-family: monospace;
+      margin-top: var(--spacing-xs);
+    }
+
+    /* 버튼 */
+    button {
+      background: var(--figma-color-bg-brand);
+      color: white;
+      border: none;
+      padding: var(--spacing-sm) var(--spacing-lg);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: var(--font-md);
+    }
+
+    button:hover {
+      background: var(--figma-color-bg-brand-hover);
+    }
+
+    /* 화면 전환 */
+    .step-view {
+      display: none;
+    }
+
+    .step-view.active {
+      display: block;
+    }
+
+    /* 네비게이션 */
+    .nav-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: var(--spacing-xl);
+      padding-bottom: var(--spacing-md);
+      border-bottom: 1px solid var(--color-border);
+      justify-content: center; /* 가운데 정렬 */
+    }
+
+    .nav-back {
+      position: absolute; /* 절대 위치로 설정 */
+      left: var(--spacing-sm); /* 왼쪽 여백 */
+      background: none;
+      color: var(--color-text);
+      padding: var(--spacing-xs) var(--spacing-sm);
+    }
+
+    .nav-title {
+      font-weight: 600;
+      text-align: center; /* 텍스트를 가운데 정렬 */
+      flex-grow: 1; /* 남은 공간을 차지하도록 설정 */
+    }
+
+    /* 스낵바 */
+    .snackbar {
+      position: fixed;
+      left: 50%;
+      bottom: var(--spacing-lg);
+      transform: translateX(-50%);
+      padding: var(--spacing-md) var(--spacing-lg);
+      background: var(--color-text);
+      color: white;
+      border-radius: 6px;
+      font-size: var(--font-md);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 9999; /* 항상 최상위에 표시 */
+    }
+
+    .snackbar.show {
+      opacity: 1;
+    }
+
+    /* 스타일 추가 */
+    .library-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: var(--font-xs);
+      font-weight: 500;
+      margin-right: var(--spacing-sm);
+    }
+
+    .library-badge.external {
+      background-color: var(--figma-color-bg-warning);
+      color: var(--figma-color-text-warning);
+    }
+
+    .library-badge.local {
+      background-color: var(--figma-color-bg-success);
+      color: var(--figma-color-text-white);
+    }
+
+    /* 버튼 스타일 추가 */
+    .action-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-sm) var(--spacing-lg);
+      background: var(--figma-color-bg-brand);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: var(--font-sm);
+      margin-bottom: var(--spacing-lg);
+    }
+
+    .action-button:hover {
+      background: var(--figma-color-bg-brand-hover);
+    }
+
+    /* 컴포넌트 정보 스타일 */
+    .component-info {
+      margin-bottom: var(--spacing-lg);
+      padding: var(--spacing-lg);
+      background: var(--color-bg-secondary);
+      border-radius: 6px;
+    }
+
+    /* 스타일 추가 */
+    .nested-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: var(--font-xs);
+      font-weight: 500;
+      margin-right: var(--spacing-sm);
+      background-color: var(--figma-color-bg-disabled);
+      color: var(--figma-color-text-disabled);
+    }
+  </style>
+</head>
+<body>
+  <!-- Step 1: 스캔 범위 선택 -->
+  <div id="step1" class="step-view active">
+    <div class="nav-header">
+      <h2>Select Scan Range</h2>
+    </div>
+    
+    <div class="scan-options">
+      <button class="scan-button" data-type="page">
+        Scan Current Page
+      </button>
+      <button class="scan-button" data-type="selection">
+        Scan Selected Layers
+      </button>
+    </div>
+  </div>
+
+  <!-- Step 2: 컴포넌트 리스트 & 선택 -->
+  <div id="step2" class="step-view">
+    <div class="nav-header">
+      <button class="nav-back" onclick="showStep(1)">← Back</button>
+      <div class="nav-title">Select Component</div>
+    </div>
+    
+    <div class="search-container">
+      <input 
+        type="text" 
+        id="search-input" 
+        class="search-input" 
+        placeholder="Search components..."
+      >
+    </div>
+    
+    <div id="component-list" class="list-container"></div>
+  </div>
+
+  <!-- Step 3: 인스턴스 리스트 -->
+  <div id="step3" class="step-view">
+    <div class="nav-header">
+      <button class="nav-back" onclick="showStep(2)">← Back</button>
+      <div class="nav-title">Instance List</div>
+    </div>
+    
+    <div id="instance-list" class="list-container"></div>
+  </div>
+
+  <script>
+    let componentData = null;
+    let selectedComponent = null;
+    let pageName = '';
+
+    // 단계 전환 함수
+    function showStep(step) {
+      document.querySelectorAll('.step-view').forEach(view => {
+        view.classList.remove('active');
+      });
+      document.getElementById(`step${step}`).classList.add('active');
+    }
+
+    // 컴포넌트 렌더링 함수
+    function renderComponent(component) {
+      const div = document.createElement('div');
+      div.className = 'list-item';
+      div.onclick = () => selectComponent(component);
+
+      const isComponentSet = component.type === 'COMPONENT_SET';
+      const instanceCount = isComponentSet ? component.totalInstanceCount : component.instanceCount;
+      const variantsInfo = isComponentSet ? `${component.variants.length} variants • ` : '';
+      const libraryInfo = component.isFromExternalLibrary ? 
+        `<span class="library-badge external">External</span>` : 
+        `<span class="library-badge local">Local Library</span>`;
+
+      div.innerHTML = `
+        ${component.previewUrl ? 
+          `<img class="preview-image" src="${component.previewUrl}" alt="${component.name}">` :
+          `<div class="preview-image"></div>`
+        }
+        <div class="item-info">
+          <h3 class="item-name">${component.name}</h3>
+          <div class="item-meta">
+            ${libraryInfo}
+            ${variantsInfo}${instanceCount} instance${instanceCount !== 1 ? 's' : ''}
+          </div>
+          <div class="item-id">ID: ${component.id}</div>
+        </div>
+      `;
+
+      return div;
+    }
+
+    // 컴포넌트 선택 함수
+    function selectComponent(component) {
+      selectedComponent = component;
+      renderInstanceList(component);
+      showStep(3);
+    }
+
+    // 인스턴스 리스트 렌더링 함수
+    function renderInstanceList(component) {
+      const instanceList = document.getElementById('instance-list');
+      instanceList.innerHTML = '';
+
+      // 모든 인스턴스 선택 버튼 추가
+      const selectAllButton = document.createElement('button');
+      selectAllButton.className = 'action-button';
+      selectAllButton.innerHTML = `
+        <span>Select All Instances</span>
+        <span>(${component.type === 'COMPONENT_SET' ? component.totalInstanceCount : component.instanceCount})</span>
+      `;
+      selectAllButton.onclick = () => selectAllInstances(component);
+      instanceList.appendChild(selectAllButton);
+
+      // 컴포넌트 정보 표시
+      const componentInfoDiv = document.createElement('div');
+      componentInfoDiv.className = 'component-info';
+      componentInfoDiv.innerHTML = `
+        <h3 class="component-name">${component.name}</h3>
+        ${component.type === 'COMPONENT_SET' ? `
+          <div class="variants">
+            <h4>Variants:</h4>
+            <ul>
+              ${component.variants.map(variant => `<li>${variant.name}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+        ${component.previewUrl ? 
+          `<img class="preview-image" src="${component.previewUrl}" alt="${component.name}">` :
+          `<div class="preview-image"></div>`
+        }
+      `;
+      instanceList.appendChild(componentInfoDiv);
+
+      if (component.type === 'COMPONENT_SET') {
+        component.variants.forEach(variant => {
+          if (variant.instanceCount > 0) {
+            const groupDiv = document.createElement('div');
+            groupDiv.className = 'group';
+            
+            groupDiv.innerHTML = `
+              <div class="group-header">
+                <h3 class="group-title">${variant.name}</h3>
+                <div class="group-count">${variant.instanceCount} instances</div>
+              </div>
+            `;
+
+            const instancesDiv = document.createElement('div');
+            instancesDiv.className = 'list-container';
+            
+            variant.instances.forEach(instance => {
+              const instanceDiv = document.createElement('div');
+              instanceDiv.className = 'list-item';
+              instanceDiv.onclick = () => selectInstance(instance);
+              
+              instanceDiv.innerHTML = `
+                <div class="item-info">
+                  <h4 class="item-name">${instance.name}</h4>
+                  <div class="item-meta">
+                    ${instance.isNested ? '<span class="nested-badge">Nested</span>' : ''}
+                    ID: ${instance.id}
+                  </div>
+                </div>
+              `;
+              
+              instancesDiv.appendChild(instanceDiv);
+            });
+
+            groupDiv.appendChild(instancesDiv);
+            instanceList.appendChild(groupDiv);
+          }
+        });
+      } else {
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'group';
+        
+        groupDiv.innerHTML = `
+          <div class="group-header">
+            <h3 class="group-title">${component.name}</h3>
+            <div class="group-count">${component.instanceCount} instances</div>
+          </div>
+        `;
+
+        const instancesDiv = document.createElement('div');
+        instancesDiv.className = 'list-container';
+        
+        component.instances.forEach(instance => {
+          const instanceDiv = document.createElement('div');
+          instanceDiv.className = 'list-item';
+          instanceDiv.onclick = () => selectInstance(instance);
+          
+          instanceDiv.innerHTML = `
+            <div class="item-info">
+              <h4 class="item-name">${instance.name}</h4>
+              <div class="item-meta">
+                ${instance.isNested ? '<span class="nested-badge">Nested</span>' : ''}
+                ID: ${instance.id}
+              </div>
+            </div>
+          `;
+          
+          instancesDiv.appendChild(instanceDiv);
+        });
+
+        groupDiv.appendChild(instancesDiv);
+        instanceList.appendChild(groupDiv);
+      }
+    }
+
+    // 인스턴스 선택 함수
+    function selectInstance(instance) {
+      // 선택된 인스턴스 하이라이트
+      document.querySelectorAll('.instance-item').forEach(item => {
+        item.classList.remove('selected');
+      });
+      event.currentTarget.classList.add('selected');
+
+      // 피그마에 선택된 인스턴스 알림
+      parent.postMessage({ 
+        pluginMessage: { 
+          type: 'select-instance',
+          instanceId: instance.id
+        } 
+      }, '*');
+    }
+
+    // 검색 관련 변수와 함수 추가
+    let searchTimeout = null;
+    const searchInput = document.getElementById('search-input');
+
+    // 검색 입력 처리
+    searchInput.addEventListener('input', (e) => {
+      const keyword = e.target.value.toLowerCase().trim();
+      
+      // 디바운스 처리
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+      
+      searchTimeout = setTimeout(() => {
+        const filteredComponents = componentData.filter(component => {
+          return component.name.toLowerCase().includes(keyword);
+        });
+        
+        renderResults(filteredComponents, false); // false: 단계 전환하지 않음
+      }, 300);
+    });
+
+    // renderResults 함수 수정
+    function renderResults(data, switchStep = true) {
+      const componentList = document.getElementById('component-list');
+      componentList.innerHTML = '';
+      
+      if (!data || data.length === 0) {
+        const keyword = searchInput.value.trim();
+        componentList.innerHTML = `
+          <div class="loading">
+            ${keyword ? `No components found for "${keyword}"` : 'No components found'}
+          </div>
+        `;
+        return;
+      }
+
+      // 컴포넌트 그룹 생성
+      const groupDiv = document.createElement('div');
+      groupDiv.className = 'group';
+
+      // 그룹 헤더 추가
+      groupDiv.innerHTML = `
+        <div class="group-header">
+          <h3 class="group-title">${pageName}</h3>
+          <div class="group-count">${data.length} component${data.length !== 1 ? 's' : ''}</div>
+        </div>
+      `;
+
+      // 컴포넌트 리스트 컨테이너
+      const componentsDiv = document.createElement('div');
+      componentsDiv.className = 'list-container';
+      
+      // 컴포넌트 렌더링
+      data.forEach(component => {
+        componentsDiv.appendChild(renderComponent(component));
+      });
+
+      groupDiv.appendChild(componentsDiv);
+      componentList.appendChild(groupDiv);
+
+      if (switchStep) {
+        showStep(2);
+      }
+    }
+
+    // 스캔 시작 버튼 클릭 이벤트
+    document.querySelectorAll('.scan-button').forEach(button => {
+      button.onclick = (e) => {
+        const scanType = e.target.dataset.type;
+        showStep(2);
+        // 기존 결과 초기화
+        componentData = null;
+        const componentList = document.getElementById('component-list');
+        componentList.innerHTML = '';
+        
+        setTimeout(() => {
+          showMessage('인스턴스 스캔 중...');
+          parent.postMessage({ 
+            pluginMessage: { 
+              type: 'search-instances',
+              scanType
+            } 
+          }, '*');
+        }, 100);
+      };
+    });
+
+    // 스낵바 관리
+    let snackbarTimeout = null;
+
+    function showMessage(message) {
+      if (snackbarTimeout) {
+        clearTimeout(snackbarTimeout);
+      }
+
+      // 이전 스낵바 제거
+      const oldSnackbar = document.querySelector('.snackbar');
+      if (oldSnackbar) {
+        oldSnackbar.classList.remove('show');
+        setTimeout(() => oldSnackbar.remove(), 200);
+      }
+
+      const snackbar = document.createElement('div');
+      snackbar.className = 'snackbar';
+      snackbar.textContent = message;
+      document.body.appendChild(snackbar); // 스낵바를 body에 추가
+
+      requestAnimationFrame(() => {
+        snackbar.classList.add('show');
+      });
+
+      snackbarTimeout = setTimeout(() => {
+        snackbar.classList.remove('show');
+        setTimeout(() => snackbar.remove(), 200);
+      }, 3000);
+    }
+
+    // 플러그인으로부터 메시지 수신
+    window.onmessage = async (event) => {
+      const msg = event.data.pluginMessage;
+      
+      if (msg) {
+        switch (msg.type) {
+          case 'scan-start':
+            showMessage('인스턴스 스캔 중...');
+            break;
+          case 'analysis-start':
+            showMessage(`인스턴스 ${msg.count}개 분석 중...`);
+            break;
+          case 'scan-complete':
+            showMessage('컴포넌트 스캔 완료');
+            break;
+          case 'update-results':
+            componentData = msg.data;
+            pageName = msg.pageName;
+            renderResults(componentData);
+            break;
+        }
+      }
+    };
+
+    // 모든 인스턴스 선택 함수
+    function selectAllInstances(component) {
+      let allInstances = [];
+      
+      if (component.type === 'COMPONENT_SET') {
+        // 컴포넌트 세트의 경우 모든 variant의 인스턴스를 수집
+        component.variants.forEach(variant => {
+          allInstances = [...allInstances, ...variant.instances];
+        });
+      } else {
+        // 단일 컴포넌트의 경우
+        allInstances = component.instances;
+      }
+      
+      // 피그마에 선택된 인스턴스들 알림
+      parent.postMessage({ 
+        pluginMessage: { 
+          type: 'select-all-instances',
+          instanceIds: allInstances.map(instance => instance.id)
+        } 
+      }, '*');
+    }
+  </script>
+</body>
+</html>
