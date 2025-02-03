@@ -8,7 +8,7 @@
 
 // This shows the HTML page in "ui.html".
 figma.showUI(__html__, {
-  width: 360,
+  width: 280,
   height: 800, // 높이를 600px로 설정
   themeColors: true // Figma의 테마 색상 사용
 });
@@ -25,8 +25,14 @@ async function processInstance(instance: InstanceNode) {
   try {
     if (!instance || instance.type !== 'INSTANCE') return null;
 
-    // 부모 노드가 인스턴스인지 확인
-    const isNested = instance.parent?.type === 'INSTANCE';
+    // 모든 상위 레이어를 검사하여 인스턴스 포함 여부 확인
+    function checkForParentInstance(node: BaseNode | null): boolean {
+      if (!node || node.type === 'PAGE' || node.type === 'DOCUMENT') return false;
+      if (node.type === 'INSTANCE') return true;
+      return checkForParentInstance(node.parent);
+    }
+    
+    const isNested = checkForParentInstance(instance.parent);
 
     // 메인 컴포넌트 정보 수집
     let mainComponentInfo = null;
