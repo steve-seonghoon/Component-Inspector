@@ -43,7 +43,7 @@
       padding: var(--spacing-md);
       font-size: var(--font-lg);
       background: var(--figma-color-bg-brand);
-      color: var(--figma-color-text);
+      color: white;
       border: 1px solid var(--figma-color-border);
       border-radius: 6px;
       cursor: pointer;
@@ -55,7 +55,11 @@
 
     /* 검색 */
     .search-container {
-      margin-bottom: var(--spacing-lg);
+      margin: var(--spacing-md) 0 var(--spacing-lg);
+      padding: 0;
+      position: sticky;
+      top: 0;
+      background: var(--figma-color-bg);
     }
 
     .search-input {
@@ -77,7 +81,7 @@
     .group-header {
       margin-top: var(--spacing-lg);
       margin-bottom: var(--spacing-md);
-      padding: 0 var(--spacing-sm);
+      padding: 0;
     }
 
     .group-title {
@@ -221,7 +225,9 @@
       font-size: var(--font-md);
       opacity: 0;
       pointer-events: none;
-      z-index: 9999; /* 항상 최상위에 표시 */
+      z-index: 9999;
+      width: auto;
+      white-space: nowrap;
     }
 
     .snackbar.show {
@@ -343,42 +349,32 @@
   </style>
 </head>
 <body>
-  <!-- Step 1: 스캔 범위 선택 -->
-  <div id="step1" class="step-view active">
-    <div class="nav-header">
-      <h2 class="nav-title">스캔 범위 선택</h2>
-    </div>
-    
-    <div class="content-area">
-    <div class="scan-options">
-      <button class="scan-button" data-type="page">
-        현재 페이지 스캔
-      </button>
-      <button class="scan-button" data-type="selection">
-        선택한 레이어 스캔
-      </button>
-    </div>
-    </div>
-  </div>
-
   <!-- Step 2: 컴포넌트 리스트 & 선택 -->
-  <div id="step2" class="step-view">
+  <div id="step2" class="step-view active">
     <div class="nav-header">
-      <button class="nav-back" onclick="showStep(1)"><</button>
-      <h2 class="nav-title">콤포넌트</h2>
+      <h2 class="nav-title">컴포넌트</h2>
     </div>
     
     <div class="content-area">
-    <div class="search-container">
-      <input 
-        type="text" 
-        id="search-input" 
-        class="search-input" 
-        placeholder="컴포넌트 검색..."
-      >
-    </div>
-    
-    <div id="component-list" class="list-container"></div>
+      <div class="scan-options">
+        <button class="scan-button" data-type="page">
+          현재 페이지 스캔
+        </button>
+        <button class="scan-button" data-type="selection">
+          선택한 레이어 스캔
+        </button>
+      </div>
+      
+      <div class="group-container" style="display: none;">
+        <div class="group-header">
+          <h3 class="group-title" id="group-title">${pageName}</h3>
+          <div class="group-count" id="group-count"></div>
+        </div>
+        <div class="search-container">
+          <input type="text" id="search-input" class="search-input" placeholder="컴포넌트 검색...">
+        </div>
+        <div id="results-container" class="list-container"></div>
+      </div>
     </div>
   </div>
 
@@ -398,9 +394,28 @@
     let componentData = null;
     let selectedComponent = null;
     let pageName = '';
+    let lastScrollPosition = 0;
 
     // 단계 전환 함수
     function showStep(step) {
+      if (step === 2) {
+        document.querySelectorAll('.step-view').forEach(view => {
+          view.classList.remove('active');
+        });
+        document.getElementById('step2').classList.add('active');
+        // 선택했던 컴포넌트 아이템을 찾아서 스크롤
+        requestAnimationFrame(() => {
+          if (selectedComponent) {
+            const componentItem = Array.from(document.querySelectorAll('.list-item'))
+              .find(item => item.querySelector('.item-id')?.textContent.includes(selectedComponent.id));
+            if (componentItem) {
+              componentItem.scrollIntoView({ block: 'center' });
+            }
+          }
+        });
+        return;
+      }
+
       document.querySelectorAll('.step-view').forEach(view => {
         view.classList.remove('active');
       });
@@ -420,6 +435,8 @@
         `<span class="library-badge external">외부</span>` : 
         `<span class="library-badge local">로컬</span>`;
 
+      const nestedBadge = component.allNested ? `<span class="nested-badge">Nested</span>` : '';
+
       div.innerHTML = `
         ${component.previewUrl ? 
           `<img class="preview-image" src="${component.previewUrl}" alt="${component.name}">` :
@@ -428,7 +445,7 @@
         <div class="item-info">
           <h3 class="item-name">${component.name}</h3>
           <div class="item-meta">
-            ${libraryInfo}
+            ${libraryInfo} ${nestedBadge}
             ${variantsInfo}${instanceCount} instance${instanceCount !== 1 ? 's' : ''}
           </div>
           <div class="item-id">ID: ${component.id}</div>
@@ -580,79 +597,17 @@
 
     // 검색 관련 변수와 함수 추가
     let searchTimeout = null;
-    const searchInput = document.getElementById('search-input');
-
-    // 검색 입력 처리
-    searchInput.addEventListener('input', (e) => {
-      const keyword = e.target.value.toLowerCase().trim();
-      
-      // 디바운스 처리
-      if (searchTimeout) {
-        clearTimeout(searchTimeout);
-      }
-      
-      searchTimeout = setTimeout(() => {
-        const filteredComponents = componentData.filter(component => {
-          return component.name.toLowerCase().includes(keyword);
-        });
-        
-        renderResults(filteredComponents, false); // false: 단계 전환하지 않음
-      }, 300);
-    });
-
-    // renderResults 함수 수정
-    function renderResults(data, switchStep = true) {
-      const componentList = document.getElementById('component-list');
-      componentList.innerHTML = '';
-      
-      if (!data || data.length === 0) {
-        const keyword = searchInput.value.trim();
-        componentList.innerHTML = `
-          <div class="loading">
-            ${keyword ? `No components found for "${keyword}"` : 'No components found'}
-          </div>
-        `;
-        return;
-      }
-
-      // 컴포넌트 그룹 생성
-      const groupDiv = document.createElement('div');
-      groupDiv.className = 'group';
-
-      // 그룹 헤더 추가
-      groupDiv.innerHTML = `
-        <div class="group-header">
-          <h3 class="group-title">${pageName}</h3>
-          <div class="group-count">${data.length} component${data.length !== 1 ? 's' : ''}</div>
-        </div>
-      `;
-
-      // 컴포넌트 리스트 컨테이너
-      const componentsDiv = document.createElement('div');
-      componentsDiv.className = 'list-container';
-      
-      // 컴포넌트 렌더링
-      data.forEach(component => {
-        componentsDiv.appendChild(renderComponent(component));
-      });
-
-      groupDiv.appendChild(componentsDiv);
-      componentList.appendChild(groupDiv);
-
-      if (switchStep) {
-        showStep(2);
-      }
-    }
 
     // 스캔 시작 버튼 클릭 이벤트
     document.querySelectorAll('.scan-button').forEach(button => {
       button.onclick = (e) => {
         const scanType = e.target.dataset.type;
-        showStep(2);
         // 기존 결과 초기화
         componentData = null;
-        const componentList = document.getElementById('component-list');
-        componentList.innerHTML = '';
+        const resultsContainer = document.getElementById('results-container');
+        if (resultsContainer) {
+          resultsContainer.innerHTML = '';
+        }
         
         setTimeout(() => {
           showMessage('인스턴스 스캔 중...');
@@ -666,6 +621,62 @@
       };
     });
 
+    // 검색 이벤트 핸들러 수정
+    function initSearchInput() {
+      const searchInput = document.getElementById('search-input');
+      if (!searchInput) return;
+  
+      searchInput.addEventListener('input', (e) => {
+        const keyword = e.target.value.toLowerCase().trim();
+        const filteredComponents = componentData.filter(component => {
+          return component.name.toLowerCase().includes(keyword);
+        });
+        renderResults(filteredComponents, false);
+      });
+    }
+
+    // renderResults 함수 수정
+    function renderResults(data, switchStep = true) {
+      // 업데이트 static group container (보이도록 변경)
+      const groupContainer = document.querySelector('.group-container');
+      if (!groupContainer) return;
+      groupContainer.style.display = 'block';
+
+      // Update group header text and count.
+      const groupTitle = document.getElementById('group-title');
+      const groupCount = document.getElementById('group-count');
+      if (groupTitle) {
+        groupTitle.textContent = pageName;
+      }
+      if (groupCount) {
+        groupCount.textContent = (data && data.length ? data.length : 0) + " component" + (data && data.length !== 1 ? "s" : "");
+      }
+
+      // Update results container.
+      const resultsContainer = document.getElementById('results-container');
+      if (resultsContainer) {
+        resultsContainer.innerHTML = '';
+        if (data && data.length > 0) {
+          data.forEach(component => {
+            resultsContainer.appendChild(renderComponent(component));
+          });
+        } else {
+          resultsContainer.innerHTML = '';
+        }
+      }
+
+      // Attach search listener if not already attached.
+      const searchInput = document.getElementById('search-input');
+      if (searchInput && !searchInput.dataset.listenerAttached) {
+        initSearchInput();
+        searchInput.dataset.listenerAttached = "true";
+      }
+
+      if (switchStep) {
+        showStep(2);
+      }
+    }
+
     // 스낵바 관리
     let snackbarTimeout = null;
 
@@ -673,23 +684,23 @@
       if (snackbarTimeout) {
         clearTimeout(snackbarTimeout);
       }
-
-      // 이전 스낵바 제거
-      const oldSnackbar = document.querySelector('.snackbar');
-      if (oldSnackbar) {
-        oldSnackbar.classList.remove('show');
-        setTimeout(() => oldSnackbar.remove(), 200);
-      }
-
+  
+      // 이전 스낵바 모두 제거
+      const oldSnackbars = document.querySelectorAll('.snackbar');
+      oldSnackbars.forEach(s => {
+        s.classList.remove('show');
+        setTimeout(() => s.remove(), 200);
+      });
+  
       const snackbar = document.createElement('div');
       snackbar.className = 'snackbar';
       snackbar.textContent = message;
       document.body.appendChild(snackbar); // 스낵바를 body에 추가
-
+  
       requestAnimationFrame(() => {
         snackbar.classList.add('show');
       });
-
+  
       snackbarTimeout = setTimeout(() => {
         snackbar.classList.remove('show');
         setTimeout(() => snackbar.remove(), 200);

@@ -182,7 +182,12 @@ async function restructureByComponents(instances: any[]) {
             previewUrl,
             variants: variantsMap,
             totalInstanceCount: 0,
-            isFromExternalLibrary
+            isFromExternalLibrary,
+            // 모든 variant의 인스턴스가 있고, 각 variant의 모든 인스턴스가 Nested 인지 계산
+            allNested: Array.from(variantsMap.values()).every((variant: any) => 
+                          variant.instances && variant.instances.length > 0 &&
+                          variant.instances.every((inst: any) => inst.isNested)
+                      ),
           });
         } catch (error) {
           console.error('Error getting component set:', error);
@@ -214,14 +219,17 @@ async function restructureByComponents(instances: any[]) {
           
           // 라이브러리 정보 확인
           const isFromExternalLibrary = component.remote;
-
+  
           // 이미 처리한 노드가 아닌 경우에만 이미지 생성
           let previewUrl = null;
           if (component && !processedNodes.has(componentKey)) {
             previewUrl = await getPreviewImage(component);
             processedNodes.add(componentKey);
           }
-
+  
+          // component.instances 대신 getInstancesAsync를 사용하여 인스턴스 목록을 가져옴
+          const compInstances = await component.getInstancesAsync();
+  
           componentMap.set(componentKey, {
             type: 'COMPONENT',
             id: mainComponentInfo.id,
@@ -229,7 +237,11 @@ async function restructureByComponents(instances: any[]) {
             previewUrl,
             instances: [],
             instanceCount: 0,
-            isFromExternalLibrary
+            isFromExternalLibrary,
+            // 모든 인스턴스가 Nested 인지 계산 (인스턴스가 없으면 기본 false)
+            allNested: compInstances && compInstances.length > 0
+                      ? compInstances.every((inst: any) => inst.isNested)
+                      : false,
           });
         } catch (error) {
           console.error('Error getting component:', error);
@@ -248,7 +260,37 @@ async function restructureByComponents(instances: any[]) {
   }
 
   // Map을 배열로 변환하고 구조화
-  return Array.from(componentMap.values()).map(component => {
+  const componentsArray = Array.from(componentMap.values());
+
+  componentsArray.forEach(component => {
+    if (component.type === 'COMPONENT_SET') {
+      // 각 variant의 allNested 업데이트:
+      // -> instance가 있으면 모든 instance가 Nested인지 판단,
+      // -> instance가 없으면 해당 variant는 전체 계산에서 제외 (여기서는 true로 설정)
+      component.variants.forEach((variant: any) => {
+        variant.allNested = (variant.instances && variant.instances.length > 0)
+                              ? variant.instances.every((inst: any) => inst.isNested)
+                              : true;
+      });
+      
+      // 전체 component.allNested는 instance가 있는 variant들만 검사
+      const variantsWithInstances = Array.from(component.variants.values())
+                                      .filter((variant: any) => variant.instances && variant.instances.length > 0);
+      if (variantsWithInstances.length > 0) {
+        component.allNested = variantsWithInstances.every((variant: any) =>
+                                variant.instances.every((inst: any) => inst.isNested)
+                            );
+      } else {
+        component.allNested = false;
+      }
+    } else if (component.type === 'COMPONENT') {
+      component.allNested = (component.instances && component.instances.length > 0)
+                            ? component.instances.every((inst: any) => inst.isNested)
+                            : false;
+    }
+  });
+
+  return componentsArray.map(component => {
     if (component.type === 'COMPONENT_SET') {
       const componentData = {
         type: component.type,
@@ -270,7 +312,8 @@ async function restructureByComponents(instances: any[]) {
           instanceCount: variant.instances.length
         })),
         totalInstanceCount: component.totalInstanceCount,
-        isFromExternalLibrary: component.isFromExternalLibrary
+        isFromExternalLibrary: component.isFromExternalLibrary,
+        allNested: component.allNested
       };
       return componentData;
     }
@@ -281,7 +324,8 @@ async function restructureByComponents(instances: any[]) {
       previewUrl: component.previewUrl,
       instances: component.instances,
       instanceCount: component.instances.length,
-      isFromExternalLibrary: component.isFromExternalLibrary
+      isFromExternalLibrary: component.isFromExternalLibrary,
+      allNested: component.allNested
     };
   });
 }
