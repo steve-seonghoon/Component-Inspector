@@ -414,12 +414,13 @@ figma.ui.onmessage = async (msg: {
   type: string, 
   scanType?: ScanType, 
   instanceId?: string,
-  instanceIds?: string[]
+  instanceIds?: string[],
+  masterId?: string
 }) => {
   if (msg.type === 'search-instances') {
     const scanType = msg.scanType || 'page';
     
-    // 스캔 시작 알림
+    // 스캔 시작 알림 전송
     figma.ui.postMessage({ type: 'scan-start' });
     await new Promise(resolve => setTimeout(resolve, 100)); // 메시지 표시 대기
     
@@ -429,9 +430,7 @@ figma.ui.onmessage = async (msg: {
         const { instances, initTime, startTime, scanInitDuration } = await scanInstances(scanType);
 
         // Step 2: 인스턴스 분석
-        console.log('[Step 2] Starting instances analysis...');
-        
-        // 인스턴스 분석 시작 알림
+        console.log('[Step 2] 인스턴스 분석 시작...');
         figma.ui.postMessage({
           type: 'analysis-start',
           count: instances.length
@@ -444,37 +443,37 @@ figma.ui.onmessage = async (msg: {
             const result = await processInstance(instance);
             if (result) structuredInstances.push(result);
           } catch (instanceError) {
-            console.error('Error processing single instance:', instanceError);
+            console.error('단일 인스턴스 처리 중 오류:', instanceError);
             continue;
           }
         }
         const scanEndTime = Date.now();
         const scanDuration = scanEndTime - startTime;
-        console.log(`[Step 2] Instances analysis completed (${scanDuration}ms)`);
-        console.log('[Instances]');
+        console.log(`[Step 2] 인스턴스 분석 완료 (${scanDuration}ms)`);
+        console.log('[인스턴스]');
         console.log(structuredInstances);
         
-        // Step 3: 이미지 생성
-        console.log('[Step 3] Starting preview image generation...');
+        // Step 3: 프리뷰 이미지 생성
+        console.log('[Step 3] 프리뷰 이미지 생성 시작...');
         const imageStartTime = Date.now();
         const componentBasedStructure = await restructureByComponents(structuredInstances);
         const imageEndTime = Date.now();
         const imageDuration = imageEndTime - imageStartTime;
-        console.log(`[Step 3] Preview image generation completed (${imageDuration}ms)`);
+        console.log(`[Step 3] 프리뷰 이미지 생성 완료 (${imageDuration}ms)`);
         
         // Step 4: 컴포넌트 구조화
-        console.log('[Step 4] Starting components analysis...');
-        console.log('[Components]');
+        console.log('[Step 4] 컴포넌트 분석 시작...');
+        console.log('[컴포넌트]');
         console.log(componentBasedStructure);
-        console.log('[Step 4] Components analysis completed');
+        console.log('[Step 4] 컴포넌트 분석 완료');
         await new Promise(resolve => setTimeout(resolve, 100)); // 메시지 표시 대기
 
-        // 성능 요약
-        console.log('[Performance Summary]');
-        console.log(`Scan: ${scanInitDuration}ms`);
-        console.log(`Instance Processing: ${scanDuration}ms`);
-        console.log(`Image Generation: ${imageDuration}ms`);
-        console.log(`Total Time: ${imageEndTime - initTime}ms`);
+        // 성능 요약 로깅
+        console.log('[성능 요약]');
+        console.log(`스캔: ${scanInitDuration}ms`);
+        console.log(`인스턴스 처리: ${scanDuration}ms`);
+        console.log(`이미지 생성: ${imageDuration}ms`);
+        console.log(`총 시간: ${imageEndTime - initTime}ms`);
 
         figma.ui.postMessage({
           type: 'update-results',
@@ -482,14 +481,14 @@ figma.ui.onmessage = async (msg: {
           pageName: figma.currentPage.name
         });
 
-        // 스캔 완료 알림
+        // 스캔 완료 알림 전송
         figma.ui.postMessage({ type: 'scan-complete' });
       } catch (error) {
-        console.error('Error during scan:', error);
+        console.error('스캔 중 오류:', error);
       }
     })();
   } else if (msg.type === 'select-instance' && msg.instanceId) {
-    // 인스턴스 선택 및 뷰 이동
+    // 인스턴스 선택 및 뷰 이동 처리
     try {
       const node = await figma.getNodeByIdAsync(msg.instanceId);
       if (node && node.type !== 'DOCUMENT') {
@@ -497,7 +496,7 @@ figma.ui.onmessage = async (msg: {
         figma.viewport.scrollAndZoomIntoView([node as SceneNode]);
       }
     } catch (error) {
-      console.error('Error selecting instance:', error);
+      console.error('인스턴스 선택 중 오류 발생:', error);
     }
   } else if (msg.type === 'select-all-instances' && msg.instanceIds) {
     try {
@@ -505,18 +504,97 @@ figma.ui.onmessage = async (msg: {
         msg.instanceIds.map((id: string) => figma.getNodeByIdAsync(id))
       );
       
-      // 유효한 노드만 필터링
+      // 유효한 노드만 필터링 처리
       const validNodes = nodes.filter((node: BaseNode | null) => node && node.type !== 'DOCUMENT') as SceneNode[];
       
       if (validNodes.length > 0) {
-        // 모든 인스턴스 선택
+        // 모든 인스턴스를 선택합니다.
         figma.currentPage.selection = validNodes;
-        
-        // 선택된 모든 노드가 보이도록 뷰포트 조정
+        // 선택된 모든 노드가 보이도록 뷰포트를 조정합니다.
         figma.viewport.scrollAndZoomIntoView(validNodes);
       }
     } catch (error) {
-      console.error('Error selecting all instances:', error);
+      console.error('모든 인스턴스 선택 중 오류 발생:', error);
+    }
+  } else if (msg.type === 'master-scan') {
+    // 수정: 현재 페이지의 마스터 컴포넌트만 스캔합니다.
+    const scanStartTime = Date.now();
+    try {
+      // 현재 페이지에서 모든 마스터 컴포넌트(타입이 'COMPONENT'인 노드) 찾기
+      const masterComponents = figma.currentPage.findAll(node => node.type === 'COMPONENT') as ComponentNode[];
+      // 각 마스터 컴포넌트에 대해 프리뷰 이미지 생성 및 인스턴스 수, 인스턴스 정보 계산
+      const structuredMasters = await Promise.all(masterComponents.map(async (component) => {
+        let previewUrl = null;
+        try {
+          previewUrl = await getPreviewImage(component);
+        } catch (previewError) {
+          console.error(`컴포넌트 ${component.id} 프리뷰 오류:`, previewError);
+        }
+        let instanceCount = 0;
+        let instanceDetails: { id: string; name: string; page: string }[] = [];
+        try {
+          const instances = await component.getInstancesAsync();
+          instanceCount = instances.length;
+          instanceDetails = instances.map(instance => {
+            // 인스턴스가 위치한 페이지를 찾기 위한 로직
+            let pageName = '';
+            let current: BaseNode | null = instance;
+            while (current && current.type !== 'PAGE') {
+              current = current.parent;
+            }
+            if (current && current.type === 'PAGE') {
+              pageName = current.name;
+            }
+            return {
+              id: instance.id,
+              name: instance.name,
+              page: pageName,
+            };
+          });
+        } catch (countError) {
+          console.error(`컴포넌트 ${component.id} 인스턴스 수 오류:`, countError);
+        }
+        return {
+          id: component.id,
+          name: component.name,
+          type: component.type,
+          remote: component.remote,
+          previewUrl,
+          instanceCount,
+          instances: instanceDetails,
+        };
+      }));
+      const elapsedTime = Date.now() - scanStartTime;
+      console.log(`[마스터 컴포넌트 스캔] 현재 페이지에서 ${structuredMasters.length}개의 마스터 컴포넌트를 스캔하였습니다.`);
+      console.log(`스캔 소요 시간: ${elapsedTime} ms`);
+      console.log('스캔된 마스터 콤포넌트 리스트:', structuredMasters);
+      // UI에 스캔된 결과 전달
+      figma.ui.postMessage({
+        type: 'update-master-results',
+        data: structuredMasters,
+        pageName: figma.currentPage.name
+      });
+    } catch (error) {
+      console.error('현재 페이지 마스터 컴포넌트 스캔 중 오류 발생:', error);
+    }
+  } else if (msg.type === 'select-master' && msg.masterId) {
+    // 선택한 마스터 컴포넌트로 포커스 이동 처리
+    try {
+      const node = await figma.getNodeByIdAsync(msg.masterId);
+      if (node && node.type !== 'DOCUMENT') {
+        // 해당 마스터 컴포넌트가 다른 페이지에 위치한다면, 현재 페이지를 해당 페이지로 전환
+        let page: BaseNode | null = node;
+        while (page && page.type !== 'PAGE') {
+          page = page.parent;
+        }
+        if (page && page.type === 'PAGE') {
+          await figma.setCurrentPageAsync(page as PageNode);
+        }
+        figma.currentPage.selection = [node as SceneNode];
+        figma.viewport.scrollAndZoomIntoView([node as SceneNode]);
+      }
+    } catch (error) {
+      console.error('마스터 컴포넌트 선택 중 오류 발생:', error);
     }
   }
 };

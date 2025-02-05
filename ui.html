@@ -363,6 +363,9 @@
         <button class="scan-button" data-type="selection">
           선택한 레이어 스캔
         </button>
+        <button class="scan-button" data-type="master">
+          마스터 콤포넌트 스캔
+        </button>
       </div>
       
       <div class="group-container" style="display: none;">
@@ -395,6 +398,7 @@
     let selectedComponent = null;
     let pageName = '';
     let lastScrollPosition = 0;
+    let masterComponentData = [];
 
     // 단계 전환 함수
     function showStep(step) {
@@ -602,22 +606,31 @@
     document.querySelectorAll('.scan-button').forEach(button => {
       button.onclick = (e) => {
         const scanType = e.target.dataset.type;
-        // 기존 결과 초기화
-        componentData = null;
-        const resultsContainer = document.getElementById('results-container');
-        if (resultsContainer) {
-          resultsContainer.innerHTML = '';
-        }
-        
-        setTimeout(() => {
-          showMessage('인스턴스 스캔 중...');
+        if (scanType === 'master') {
+          console.log('마스터 컴포넌트 스캔 시작');
+          // UI 변화 없이 메시지 전송
           parent.postMessage({ 
             pluginMessage: { 
-              type: 'search-instances',
-              scanType
+              type: 'master-scan'
             } 
           }, '*');
-        }, 100);
+        } else {
+          // 'page' 또는 'selection' 스캔의 기존 동작 처리
+          componentData = null;
+          const resultsContainer = document.getElementById('results-container');
+          if (resultsContainer) {
+            resultsContainer.innerHTML = '';
+          }
+          setTimeout(() => {
+            showMessage('인스턴스 스캔 중...');
+            parent.postMessage({ 
+              pluginMessage: { 
+                type: 'search-instances',
+                scanType
+              } 
+            }, '*');
+          }, 100);
+        }
       };
     });
 
@@ -727,6 +740,10 @@
             pageName = msg.pageName;
             renderResults(componentData);
             break;
+          case 'update-master-results':
+            masterComponentData = msg.data;
+            renderMasterResults(masterComponentData);
+            break;
         }
       }
     };
@@ -752,6 +769,48 @@
           instanceIds: allInstances.map(instance => instance.id)
         } 
       }, '*');
+    }
+
+    // 마스터 컴포넌트 결과를 렌더링하는 함수
+    function renderMasterResults(data) {
+      const resultsContainer = document.getElementById('results-container');
+      if (!resultsContainer) return;
+      resultsContainer.innerHTML = ''; // 기존 결과 초기화
+
+      // 그룹 헤더 업데이트 (필요하다면)
+      const groupTitle = document.getElementById('group-title');
+      if (groupTitle) {
+        groupTitle.textContent = '마스터 컴포넌트 목록';
+      }
+
+      data.forEach(component => {
+        const item = document.createElement('div');
+        item.className = 'list-item';
+        // 아이템 클릭 시 선택 메시지 전송
+        item.onclick = () => {
+          console.log(`마스터 컴포넌트 선택: ${component.id}`);
+          parent.postMessage({ 
+            pluginMessage: { 
+              type: 'select-master',
+              masterId: component.id
+            } 
+          }, '*');
+        };
+
+        item.innerHTML = `
+          <img src="${component.previewUrl || 'placeholder.png'}" alt="${component.name}" class="preview-image">
+          <div class="item-info">
+            <h4 class="item-name">${component.name}</h4>
+            <div class="item-meta">Instances: ${component.instanceCount}</div>
+          </div>
+        `;
+        resultsContainer.appendChild(item);
+      });
+      // 결과 컨테이너 보이기
+      const groupContainer = document.querySelector('.group-container');
+      if (groupContainer) {
+        groupContainer.style.display = 'block';
+      }
     }
   </script>
 </body>
