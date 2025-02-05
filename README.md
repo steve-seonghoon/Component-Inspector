@@ -1,40 +1,44 @@
-Below are the steps to get your plugin running. You can also find instructions at:
+# Figma Plugin: Component and Instance Analyzer
 
-  https://www.figma.com/plugin-docs/plugin-quickstart-guide/
+This Figma plugin is designed to analyze your Figma document by scanning instance nodes on the current page or within selected layers. It processes each instance to retrieve detailed component information and generates preview images for both independent components and component sets with variants.
 
-This plugin template uses Typescript and NPM, two standard tools in creating JavaScript applications.
+---
 
-First, download Node.js which comes with NPM. This will allow you to install TypeScript and other
-libraries. You can find the download link here:
+## How It Works
 
-  https://nodejs.org/en/download/
+1. **Plugin UI Initialization:**  
+   When the plugin starts, it displays a UI panel with options to scan either the current page or selected layers.  
+   The UI is built using an HTML file and styled to match Figma's theme.
 
-Next, install TypeScript using the command:
+2. **Scanning and Processing Instances:**  
+   - The plugin scans for instance nodes in the current page or within selected nodes.
+   - For each instance:
+     - It retrieves the main component.
+     - Determines if the instance is nested.
+     - Collects additional data such as component IDs, names, and types.
+     - If part of a component set, it gathers all related variant information.
 
-  npm install -g typescript
+3. **Preview Image Generation:**  
+   - The plugin exports a PNG image for each component node.
+   - Images are scaled based on the width and height of the node, ensuring they fit within predefined limits.
 
-Finally, in the directory of your plugin, get the latest type definitions for the plugin API by running:
+4. **Restructuring and Analyzing Components:**  
+   - After processing, instances are grouped by their component or component set.
+   - For component sets, each variant is listed along with its instance count.
+   - All nested statuses are verified to provide clarity on component usage.
 
-  npm install --save-dev @figma/plugin-typings
+5. **Interactivity and Figma Integration:**  
+   - The structured data is sent to the UI to display a list of components along with preview images and instance counts.
+   - Users can click on a component to view its instances.
+   - Options to select a single instance or all instances are provided, and they automatically trigger viewport adjustments in Figma.
 
-If you are familiar with JavaScript, TypeScript will look very familiar. In fact, valid JavaScript code
-is already valid Typescript code.
+---
 
-TypeScript adds type annotations to variables. This allows code editors such as Visual Studio Code
-to provide information about the Figma API while you are writing code, as well as help catch bugs
-you previously didn't notice.
+## Additional Information
 
-For more information, visit https://www.typescriptlang.org/
+- **Figma Plugin API:**  
+  This plugin is built on Figma's Plugin API, ensuring smooth integration with your Figma documents.
 
-Using TypeScript requires a compiler to convert TypeScript (code.ts) into JavaScript (code.js)
-for the browser to run.
-
-We recommend writing TypeScript code using Visual Studio code:
-
-1. Download Visual Studio Code if you haven't already: https://code.visualstudio.com/.
-2. Open this directory in Visual Studio Code.
-3. Compile TypeScript to JavaScript: Run the "Terminal > Run Build Task..." menu item,
-    then select "npm: watch". You will have to do this again every time
-    you reopen Visual Studio Code.
-
-That's it! Visual Studio Code will regenerate the JavaScript file every time you save.
+- **Helpful Resources:**  
+  - [Figma Plugin Documentation](https://www.figma.com/plugin-docs/plugin-quickstart-guide/)
+  - [TypeScript Official Website](https://www.typescriptlang.org/)
