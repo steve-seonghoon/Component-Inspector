@@ -25,6 +25,19 @@ async function processInstance(instance: InstanceNode) {
   try {
     if (!instance || instance.type !== 'INSTANCE') return null;
 
+    // 페이지 정보 수집 추가
+    let pageInfo = null;
+    let current: BaseNode | null = instance;
+    while (current && current.type !== 'PAGE') {
+      current = current.parent;
+    }
+    if (current && current.type === 'PAGE') {
+      pageInfo = {
+        id: current.id,
+        name: current.name
+      };
+    }
+
     // 모든 상위 레이어를 검사하여 인스턴스 포함 여부 확인
     function checkForParentInstance(node: BaseNode | null): boolean {
       if (!node || node.type === 'PAGE' || node.type === 'DOCUMENT') return false;
@@ -80,6 +93,7 @@ async function processInstance(instance: InstanceNode) {
       id: instance.id,
       name: instance.name,
       isNested,
+      pageInfo,  // 페이지 정보 추가
       mainComponentInfo,
       componentSetInfo,
     };
@@ -415,7 +429,8 @@ figma.ui.onmessage = async (msg: {
   scanType?: ScanType, 
   instanceId?: string,
   instanceIds?: string[],
-  masterId?: string
+  masterId?: string,
+  pageId?: string
 }) => {
   if (msg.type === 'search-instances') {
     const scanType = msg.scanType || 'page';
@@ -455,6 +470,9 @@ figma.ui.onmessage = async (msg: {
         
         // Step 3: 프리뷰 이미지 생성
         console.log('[Step 3] 프리뷰 이미지 생성 시작...');
+        figma.ui.postMessage({ type: 'preview-start' });
+        await new Promise(resolve => setTimeout(resolve, 100)); // 메시지 표시 대기
+        
         const imageStartTime = Date.now();
         const componentBasedStructure = await restructureByComponents(structuredInstances);
         const imageEndTime = Date.now();
@@ -488,8 +506,13 @@ figma.ui.onmessage = async (msg: {
       }
     })();
   } else if (msg.type === 'select-instance' && msg.instanceId) {
-    // 인스턴스 선택 및 뷰 이동 처리
     try {
+      // 구조화된 데이터에서 페이지 정보 활용
+      const pageNode = msg.pageId ? await figma.getNodeByIdAsync(msg.pageId) as PageNode : null;
+      if (pageNode && pageNode.type === 'PAGE') {
+        await figma.setCurrentPageAsync(pageNode);
+      }
+
       const node = await figma.getNodeByIdAsync(msg.instanceId);
       if (node && node.type !== 'DOCUMENT') {
         figma.currentPage.selection = [node as SceneNode];
@@ -517,43 +540,89 @@ figma.ui.onmessage = async (msg: {
       console.error('모든 인스턴스 선택 중 오류 발생:', error);
     }
   } else if (msg.type === 'master-scan') {
-    // 수정: 현재 페이지의 마스터 컴포넌트만 스캔합니다.
     const scanStartTime = Date.now();
     try {
-      // 현재 페이지에서 모든 마스터 컴포넌트(타입이 'COMPONENT'인 노드) 찾기
+      // 스캔 시작 알림
+      figma.ui.postMessage({ type: 'scan-start' });
+      await new Promise(resolve => setTimeout(resolve, 100)); // 메시지 표시 대기
+
+      // 현재 페이지의 마스터 컴포넌트만 찾기
       const masterComponents = figma.currentPage.findAll(node => node.type === 'COMPONENT') as ComponentNode[];
-      // 각 마스터 컴포넌트에 대해 프리뷰 이미지 생성 및 인스턴스 수, 인스턴스 정보 계산
-      const structuredMasters = await Promise.all(masterComponents.map(async (component) => {
+      figma.ui.postMessage({ 
+        type: 'analysis-start',
+        count: masterComponents.length
+      });
+      await new Promise(resolve => setTimeout(resolve, 100)); // 메시지 표시 대기
+
+      // 컴포넌트 세트별로 그룹화할 맵
+      const componentSetsMap = new Map();
+      interface ComponentDetail {
+        id: string;
+        name: string;
+        type: string;
+        remote: boolean;
+        previewUrl: string | null;
+        instanceCount: number;
+        instances: Array<{
+          id: string;
+          name: string;
+          page: { id: string; name: string; } | null;
+        }>;
+        parent: {
+          id: string;
+          name: string;
+          type: string;
+        } | null;
+      }
+      const standaloneComponents: ComponentDetail[] = [];
+
+      // 각 마스터 컴포넌트에 대해 프리뷰 이미지 생성 및 인스턴스 정보 계산
+      figma.ui.postMessage({ type: 'preview-start' });
+      await new Promise(resolve => setTimeout(resolve, 100)); // 메시지 표시 대기
+      
+      const componentDetails = await Promise.all(masterComponents.map(async (component) => {
         let previewUrl = null;
         try {
           previewUrl = await getPreviewImage(component);
         } catch (previewError) {
           console.error(`컴포넌트 ${component.id} 프리뷰 오류:`, previewError);
         }
+
+        // 컴포넌트 세트 정보 수집
+        let componentSetInfo = null;
+        if (component.parent && component.parent.type === 'COMPONENT_SET') {
+          componentSetInfo = {
+            id: component.parent.id,
+            name: component.parent.name,
+            type: 'COMPONENT_SET'
+          };
+        }
+
         let instanceCount = 0;
-        let instanceDetails: { id: string; name: string; page: string }[] = [];
+        let instanceDetails: { id: string; name: string; page: { id: string, name: string } | null }[] = [];
         try {
           const instances = await component.getInstancesAsync();
           instanceCount = instances.length;
           instanceDetails = instances.map(instance => {
-            // 인스턴스가 위치한 페이지를 찾기 위한 로직
-            let pageName = '';
+            // 인스턴스가 위치한 페이지를 찾기 위한 로직 (페이지의 id와 name을 함께 반환)
+            let pageInfo: { id: string, name: string } | null = null;
             let current: BaseNode | null = instance;
             while (current && current.type !== 'PAGE') {
               current = current.parent;
             }
             if (current && current.type === 'PAGE') {
-              pageName = current.name;
+              pageInfo = { id: current.id, name: current.name };
             }
             return {
               id: instance.id,
               name: instance.name,
-              page: pageName,
+              page: pageInfo,
             };
           });
         } catch (countError) {
           console.error(`컴포넌트 ${component.id} 인스턴스 수 오류:`, countError);
         }
+
         return {
           id: component.id,
           name: component.name,
@@ -562,20 +631,63 @@ figma.ui.onmessage = async (msg: {
           previewUrl,
           instanceCount,
           instances: instanceDetails,
+          parent: componentSetInfo
         };
       }));
+
+      // 컴포넌트를 세트별로 그룹화
+      componentDetails.forEach(component => {
+        if (component.parent) {
+          // 컴포넌트 세트에 속한 경우
+          const setId = component.parent.id;
+          if (!componentSetsMap.has(setId)) {
+            componentSetsMap.set(setId, {
+              id: setId,
+              name: component.parent.name,
+              type: 'COMPONENT_SET',
+              variants: [],
+              previewUrl: null,
+              instanceCount: 0,
+              remote: component.remote
+            });
+          }
+          const componentSet = componentSetsMap.get(setId);
+          componentSet.variants.push(component);
+          componentSet.instanceCount += component.instanceCount;
+          if (!componentSet.previewUrl && component.previewUrl) {
+            componentSet.previewUrl = component.previewUrl;
+          }
+        } else {
+          // 독립적인 컴포넌트인 경우
+          standaloneComponents.push(component);
+        }
+      });
+
+      // 최종 결과 구조화 (컴포넌트 세트와 독립 컴포넌트 합치기)
+      const structuredMasters = [
+        ...Array.from(componentSetsMap.values()),
+        ...standaloneComponents
+      ];
+
       const elapsedTime = Date.now() - scanStartTime;
-      console.log(`[마스터 컴포넌트 스캔] 현재 페이지에서 ${structuredMasters.length}개의 마스터 컴포넌트를 스캔하였습니다.`);
       console.log(`스캔 소요 시간: ${elapsedTime} ms`);
-      console.log('스캔된 마스터 콤포넌트 리스트:', structuredMasters);
-      // UI에 스캔된 결과 전달
+      console.log('마스터 컴포넌트 결과 전송:', {
+        type: 'update-master-results',
+        data: structuredMasters,
+        pageName: figma.currentPage.name
+      });
       figma.ui.postMessage({
         type: 'update-master-results',
         data: structuredMasters,
         pageName: figma.currentPage.name
       });
+
+      // 스캔 완료 알림
+      figma.ui.postMessage({ type: 'scan-complete' });
+
     } catch (error) {
       console.error('현재 페이지 마스터 컴포넌트 스캔 중 오류 발생:', error);
+      console.error('스캔 중 오류:', error);
     }
   } else if (msg.type === 'select-master' && msg.masterId) {
     // 선택한 마스터 컴포넌트로 포커스 이동 처리

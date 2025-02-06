@@ -351,20 +351,16 @@
 <body>
   <!-- Step 2: 컴포넌트 리스트 & 선택 -->
   <div id="step2" class="step-view active">
-    <div class="nav-header">
-      <h2 class="nav-title">컴포넌트</h2>
-    </div>
-    
     <div class="content-area">
       <div class="scan-options">
         <button class="scan-button" data-type="page">
-          현재 페이지 스캔
+          현재 페이지에서 인스턴스 스캔
         </button>
         <button class="scan-button" data-type="selection">
-          선택한 레이어 스캔
+          선택한 레이어에서 인스턴스 스캔
         </button>
         <button class="scan-button" data-type="master">
-          마스터 콤포넌트 스캔
+          현재 페이지에서 마스터 콤포넌트 스캔
         </button>
       </div>
       
@@ -374,7 +370,7 @@
           <div class="group-count" id="group-count"></div>
         </div>
         <div class="search-container">
-          <input type="text" id="search-input" class="search-input" placeholder="컴포넌트 검색...">
+          <input type="text" id="search-input" class="search-input" placeholder="컴포넌트 이름 검색">
         </div>
         <div id="results-container" class="list-container"></div>
       </div>
@@ -385,7 +381,7 @@
   <div id="step3" class="step-view">
     <div class="nav-header">
       <button class="nav-back" onclick="showStep(2)"><</button>
-      <h2 class="nav-title">인스턴스</h2>
+      <h2 class="nav-title" id="instance-title"></h2>
     </div>
     
     <div class="content-area">
@@ -468,6 +464,12 @@
 
     // 인스턴스 리스트 렌더링 함수
     function renderInstanceList(component) {
+      // 타이틀 업데이트
+      const instanceTitle = document.getElementById('instance-title');
+      if (instanceTitle) {
+        instanceTitle.textContent = component.name;
+      }
+      
       const instanceList = document.getElementById('instance-list');
       instanceList.innerHTML = '';
 
@@ -727,13 +729,19 @@
       if (msg) {
         switch (msg.type) {
           case 'scan-start':
-            showMessage('인스턴스 스캔 중...');
+            showMessage('스캔 중...');
             break;
           case 'analysis-start':
-            showMessage(`인스턴스 ${msg.count}개 분석 중...`);
+            showMessage(`스캔 결과 ${msg.count}개 분석 중...`);
+            break;
+          case 'preview-start':
+            showMessage('프리뷰 이미지 생성 중...');
             break;
           case 'scan-complete':
-            showMessage('컴포넌트 스캔 완료');
+            showMessage('스캔 완료');
+            break;
+          case 'scan-error':
+            showMessage('스캔 중 오류가 발생했습니다.');
             break;
           case 'update-results':
             componentData = msg.data;
@@ -742,6 +750,7 @@
             break;
           case 'update-master-results':
             masterComponentData = msg.data;
+            pageName = msg.pageName;
             renderMasterResults(masterComponentData);
             break;
         }
@@ -772,45 +781,249 @@
     }
 
     // 마스터 컴포넌트 결과를 렌더링하는 함수
-    function renderMasterResults(data) {
+    function renderMasterResults(data, filterKeyword = '') {
       const resultsContainer = document.getElementById('results-container');
       if (!resultsContainer) return;
       resultsContainer.innerHTML = ''; // 기존 결과 초기화
-
-      // 그룹 헤더 업데이트 (필요하다면)
-      const groupTitle = document.getElementById('group-title');
-      if (groupTitle) {
-        groupTitle.textContent = '마스터 컴포넌트 목록';
-      }
-
-      data.forEach(component => {
-        const item = document.createElement('div');
-        item.className = 'list-item';
-        // 아이템 클릭 시 선택 메시지 전송
-        item.onclick = () => {
-          console.log(`마스터 컴포넌트 선택: ${component.id}`);
-          parent.postMessage({ 
-            pluginMessage: { 
-              type: 'select-master',
-              masterId: component.id
-            } 
-          }, '*');
-        };
-
-        item.innerHTML = `
-          <img src="${component.previewUrl || 'placeholder.png'}" alt="${component.name}" class="preview-image">
-          <div class="item-info">
-            <h4 class="item-name">${component.name}</h4>
-            <div class="item-meta">Instances: ${component.instanceCount}</div>
-          </div>
-        `;
-        resultsContainer.appendChild(item);
-      });
-      // 결과 컨테이너 보이기
+      
+      // 컴포넌트 세트로 그룹화
+      const groupedData = data.reduce((acc, component) => {
+        if (component.parent?.type === 'COMPONENT_SET') {
+          // 컴포넌트 세트에 속한 경우
+          const setId = component.parent.id;
+          if (!acc[setId]) {
+            acc[setId] = {
+              id: setId,
+              name: component.parent.name,
+              type: 'COMPONENT_SET',
+              variants: [],
+              previewUrl: null,
+              instanceCount: 0
+            };
+          }
+          acc[setId].variants.push(component);
+          acc[setId].instanceCount += component.instanceCount;
+          if (!acc[setId].previewUrl && component.previewUrl) {
+            acc[setId].previewUrl = component.previewUrl;
+          }
+        } else {
+          // 독립적인 컴포넌트인 경우
+          acc[component.id] = component;
+        }
+        return acc;
+      }, {});
+      
+      // 검색어로 필터링
+      const filteredData = filterKeyword
+        ? Object.values(groupedData).filter(component => 
+            component.name.toLowerCase().includes(filterKeyword.toLowerCase()) ||
+            component.id.toLowerCase().includes(filterKeyword.toLowerCase())
+          )
+        : Object.values(groupedData);
+      
+      // 그룹 컨테이너 표시
       const groupContainer = document.querySelector('.group-container');
       if (groupContainer) {
         groupContainer.style.display = 'block';
       }
+      
+      // 그룹 타이틀 업데이트
+      const groupTitle = document.getElementById('group-title');
+      if (groupTitle) {
+        groupTitle.textContent = `${pageName}`;
+      }
+      
+      // 그룹 카운트 업데이트
+      const groupCount = document.getElementById('group-count');
+      if (groupCount) {
+        groupCount.textContent = `${filteredData.length} master components`;
+      }
+
+      filteredData.forEach(component => {
+        const item = document.createElement('div');
+        item.className = 'list-item';
+        item.onclick = () => {
+          console.log(`마스터 콤포넌트 클릭: ${component.id}`);
+          renderMasterInstanceList(component);
+        };
+  
+        const isComponentSet = component.type === 'COMPONENT_SET';
+        const instanceCount = component.instanceCount;
+        const variantsInfo = isComponentSet ? `${component.variants.length} variants • ` : '';
+        const libraryInfo = component.remote ? 
+          `<span class="library-badge external">외부</span>` : 
+          `<span class="library-badge local">로컬</span>`;
+  
+        item.innerHTML = `
+          <img src="${component.previewUrl || 'placeholder.png'}" alt="${component.name}" class="preview-image">
+          <div class="item-info">
+            <h3 class="item-name">${component.name}</h3>
+            <div class="item-meta">
+              ${libraryInfo}
+              ${variantsInfo}${instanceCount} instance${instanceCount !== 1 ? 's' : ''}
+            </div>
+            <div class="item-id">ID: ${component.id}</div>
+          </div>
+        `;
+        resultsContainer.appendChild(item);
+      });
+    }
+
+    // 마스터 컴포넌트의 인스턴스 리스트 화면 렌더링 함수
+    function renderMasterInstanceList(masterComponent) {
+      // 타이틀 업데이트
+      const instanceTitle = document.getElementById('instance-title');
+      if (instanceTitle) {
+        instanceTitle.textContent = masterComponent.name;
+      }
+      
+      selectedComponent = masterComponent;
+      showStep(3);
+
+      const instanceList = document.getElementById('instance-list');
+      if (!instanceList) return;
+      instanceList.innerHTML = '';
+      
+      // 1) 마스터 컴포넌트 정보 표시
+      const headerContainer = document.createElement('div');
+      headerContainer.className = 'header-container';
+      const componentInfoDiv = document.createElement('div');
+      componentInfoDiv.className = 'component-info';
+      
+      const isComponentSet = masterComponent.type === 'COMPONENT_SET';
+      
+      componentInfoDiv.innerHTML = `
+        <h3 class="component-name">${masterComponent.name}</h3>
+        ${isComponentSet ? `
+          <div class="variants">
+            <h4>Variants:</h4>
+            <ul>
+              ${masterComponent.variants.map(variant => `<li>${variant.name}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+        ${masterComponent.previewUrl ? 
+          `<img class="preview-image" src="${masterComponent.previewUrl}" alt="${masterComponent.name}">` :
+          `<div class="preview-image"></div>`
+        }
+      `;
+      
+      headerContainer.appendChild(componentInfoDiv);
+      instanceList.appendChild(headerContainer);
+      
+      // 2) 액션 버튼 배치
+      const actionButton = document.createElement('button');
+      actionButton.className = 'action-button';
+      actionButton.textContent = '마스터 컴포넌트 선택';
+      actionButton.onclick = () => {
+        parent.postMessage({ 
+          pluginMessage: { 
+            type: 'select-master',
+            masterId: isComponentSet ? masterComponent.variants[0].id : masterComponent.id
+          } 
+        }, '*');
+      };
+      instanceList.appendChild(actionButton);
+      
+      // 3) 인스턴스 리스트 영역 생성
+      if (isComponentSet) {
+        // 컴포넌트 세트인 경우 variant별로 그룹화
+        masterComponent.variants
+          .filter(variant => variant.instances && variant.instances.length > 0)  // 인스턴스가 있는 variant만 필터링
+          .forEach(variant => {
+            const variantGroup = document.createElement('div');
+            variantGroup.className = 'group';
+            const instancesDiv = document.createElement('div');
+            instancesDiv.className = 'list-container';
+            
+            variantGroup.innerHTML = `
+              <div class="group-header">
+                <h3 class="group-title">${variant.name}</h3>
+                <div class="group-count">${variant.instances.length} instance${variant.instances.length !== 1 ? 's' : ''}</div>
+              </div>
+            `;
+            
+            variant.instances.forEach(instance => {
+              const instanceDiv = document.createElement('div');
+              instanceDiv.className = 'list-item';
+              instanceDiv.onclick = () => {
+                parent.postMessage({ 
+                  pluginMessage: { 
+                    type: 'select-instance',
+                    instanceId: instance.id,
+                    pageId: instance.page?.id
+                  } 
+                }, '*');
+              };
+
+              instanceDiv.innerHTML = `
+                <div class="item-info">
+                  <h4 class="item-name">${instance.name}</h4>
+                  <div class="item-meta">
+                    <span>Page: ${instance.page?.name || 'Unknown'}</span>
+                  </div>
+                  <div class="item-id">ID: ${instance.id}</div>
+                </div>
+              `;
+
+              instancesDiv.appendChild(instanceDiv);
+            });
+            
+            variantGroup.appendChild(instancesDiv);
+            instanceList.appendChild(variantGroup);
+          });
+      } else {
+        // 일반 컴포넌트인 경우 기존 방식대로 표시
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'group';
+        const instancesDiv = document.createElement('div');
+        instancesDiv.className = 'list-container';
+        
+        groupDiv.innerHTML = `
+          <div class="group-header">
+            <h3 class="group-title">${masterComponent.name}</h3>
+            <div class="group-count">${masterComponent.instances.length} instance${masterComponent.instances.length !== 1 ? 's' : ''}</div>
+          </div>
+        `;
+
+        masterComponent.instances.forEach(instance => {
+          const instanceDiv = document.createElement('div');
+          instanceDiv.className = 'list-item';
+          instanceDiv.onclick = () => {
+            parent.postMessage({ 
+              pluginMessage: { 
+                type: 'select-instance',
+                instanceId: instance.id,
+                pageId: instance.page?.id
+              } 
+            }, '*');
+          };
+
+          instanceDiv.innerHTML = `
+            <div class="item-info">
+              <h4 class="item-name">${instance.name}</h4>
+              <div class="item-meta">
+                <span>Page: ${instance.page?.name || 'Unknown'}</span>
+              </div>
+              <div class="item-id">ID: ${instance.id}</div>
+            </div>
+          `;
+
+          instancesDiv.appendChild(instanceDiv);
+        });
+        
+        groupDiv.appendChild(instancesDiv);
+        instanceList.appendChild(groupDiv);
+      }
+    }
+
+    // 검색 입력 이벤트 핸들러
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        const keyword = e.target.value.trim();
+        renderMasterResults(masterComponentData, keyword);
+      });
     }
   </script>
 </body>
